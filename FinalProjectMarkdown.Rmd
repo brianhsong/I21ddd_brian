@@ -1,0 +1,281 @@
+---
+title: "Final Project Markdown"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+The data set is downloaded from the Minneapolis City Open Data website and was collected through the paperwork that police had submitted. It looks at the cases when the police used force on a subject from 2008 to May 2020. Through this data, I hope to a perspective into how the Minneapolis Police Department administers force by the race of the subjects. More specifically, we will be analyzing the different reasons why the police were called and if the subjects were injured as a result.
+
+## Processing
+
+First, the following packages are used: dplyr, tidyverse, ggplot2, and gt.
+
+```{r packages load}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(gt)
+```
+
+Then the Use_of_Force.csv file is read in to a dataframe called "Force"
+
+``` {r reading csv}
+path <- file.path("~", "Desktop", "Police_Use_of_Force.csv")
+invisible(Force <- read.csv(path, stringsAsFactors = TRUE))
+```
+
+When looking through the data for the different reasons why the police were called, there are many different levels that could be combined into a single level instead. For example, there are four separate levels that are used to reference instances of domestic violence: "Domestic Abuse-In Progress", "Domestic", "Domestic Abuse Report Only", and "Domestic with Weapons". These four levels are then combined into one "Domestic Abuse" level. The same is done to "Suspicious Person/Vehicle", "Assault", "Disturbance", "Traffic Violations", and "Unspecified Trouble".
+
+``` {r consolidating the levels}
+# consolidate the domestic abuse levels 
+levels(Force$Problem)[levels(Force$Problem) == 'Domestic Abuse-In Progress '] <- "Domestic Abuse"
+levels(Force$Problem)[levels(Force$Problem) == 'Domestic '] <- "Domestic Abuse"
+levels(Force$Problem)[levels(Force$Problem) == 'Domestic Abuse Report Only '] <- "Domestic Abuse"
+levels(Force$Problem)[levels(Force$Problem) == 'Domestic with Weapons '] <- "Domestic Abuse"
+
+# consolidate the suspicious person/vehicle levels
+levels(Force$Problem)[levels(Force$Problem) == 'Suspicious Person '] <- "Suspicious Person/Vehicle"
+levels(Force$Problem)[levels(Force$Problem) == 'Suspcious Vehicle '] <- "Suspicious Person/Vehicle"
+levels(Force$Problem)[levels(Force$Problem) == 'Unwanted Person '] <- "Suspicious Person/Vehicle"
+levels(Force$Problem)[levels(Force$Problem) == 'Suspected Prostitute '] <- "Suspicious Person/Vehicle"
+levels(Force$Problem)[levels(Force$Problem) == 'Person with a Gun '] <- "Suspicious Person/Vehicle"
+levels(Force$Problem)[levels(Force$Problem) == 'Person with a Weapon '] <- "Suspicious Person/Vehicle"
+
+# consolidate the assault levels
+levels(Force$Problem)[levels(Force$Problem) == 'Assault in Progress '] <- "Assault"
+levels(Force$Problem)[levels(Force$Problem) == 'Assault Report Only '] <- "Assault"
+levels(Force$Problem)[levels(Force$Problem) == 'Fight '] <- "Assault"
+
+# consolidate the disturbance levels
+levels(Force$Problem)[levels(Force$Problem) == 'Disturbance '] <- "Disturbance"
+levels(Force$Problem)[levels(Force$Problem) == 'Loud Party '] <- "Disturbance"
+levels(Force$Problem)[levels(Force$Problem) == 'Music-Loud '] <- "Disturbance"
+levels(Force$Problem)[levels(Force$Problem) == 'Drunk/Intoxicated Person '] <- "Disturbance"
+levels(Force$Problem)[levels(Force$Problem) == 'Firecrackers '] <- "Disturbance"
+
+# consolidate the traffic law levels
+levels(Force$Problem)[levels(Force$Problem) == 'Traffic Law Enforcement '] <- "Traffic Violations"
+
+# consolidate the Unknown level
+levels(Force$Problem)[levels(Force$Problem) == 'Unknown Trouble '] <- "Unspecified Trouble"
+```
+
+There are two ways the data set denoted missing values: blank space and 0 values. In order to unify the two methods, they are both replaced with a NA value.
+
+```{r na values}
+# setting all missing (blank) entries to NA
+Force[Force==" " | Force == ""] <- NA
+
+# setting zero values to NA
+Force[Force == 0] <- NA
+```
+
+Then the rows with the NA values are taken out by using this line of code:
+
+```{r omit NAs}
+# omit the rows with NA values
+Force <- na.omit(Force)
+```
+
+This concludes the data cleaning portion.
+
+Next, the data is prepared for creating tables and plotting graphs and a data frame (allDF) that only looks at the problems and the race of subjects is created.
+
+```{r allDF}
+# Prep data frame
+allDF <- Force %>%
+    select(Problem, Race) %>%
+    arrange(Race) %>%
+    group_by(Race, Problem) %>%
+    summarize(Counts = n()) %>%
+    pivot_wider(names_from = Problem, values_from = Counts)
+```
+
+Now allDF contains the race of the subjects and the counts of the different problems that police responded to. However, we will be selecting the top five problems since including all of them would get unruly in a table. 
+
+```{r select top 5 problems}
+# select the top 5 problems
+allDF <- allDF %>%
+    select('Suspicious Person/Vehicle', 'Assault', 'Domestic Abuse', 'Disturbance', 'Traffic Violations')
+```
+
+Then, the four races with significant data available are selected.
+
+```{r select race}
+# specify which races to include
+finalDF <- allDF %>%
+    filter(Race == 'White' | 
+               Race == 'Black' |
+               Race == 'Asian' |
+               Race == 'Native American') %>%
+    arrange(desc(`Suspicious Person/Vehicle`))
+```
+
+And now the data frame finalDF is ready to be made into a table. 
+
+To create the bar graphs representations of the table for black subjects and white subjects in particular, we will reuse the original Force dataframe. 
+
+```{r set up the black and white data}
+# black subjects
+invisible(BlackDF <- Force %>%
+              filter(Race == 'Black'))
+
+# prep data frame
+blackOffense <- BlackDF %>%
+    select(Problem) %>%
+    count(Problem) %>%
+    arrange(desc(n)) %>%
+    top_n(5, n) #getting the top five
+boDF <- as.data.frame(blackOffense)
+
+# white subjects
+invisible(WhiteDf <- Force %>%
+              filter(Race == 'White'))
+
+# Prep the data frame
+whiteOffense <- WhiteDf %>%
+    select(Problem) %>%
+    count(Problem) %>%
+    arrange(desc(n)) %>%
+    top_n(5, n) # getting the top five
+woDF <- as.data.frame(whiteOffense)
+```
+
+The levels are manually ordered into decreasing order.
+
+```{r reorder}
+# black subjects
+# manually reorder the levels in decreasing order
+boDF$Problem <- factor(boDF$Problem, levels = c('Suspicious Person/Vehicle', 'Assault', 'Domestic Abuse', 'Disturbance', 'Traffic Violations'))
+
+# white subjects
+# manually reorder the levels in decreasing order
+woDF$Problem <- factor(woDF$Problem, levels = c('Suspicious Person/Vehicle', 'Assault', 'Domestic Abuse', 'Disturbance', 'Unspecified Trouble'))
+```
+
+The counts are currently titled "n", so we will be renaming it as "Counts".
+
+```{r rename counts}
+# black subjects
+# change the n column into count column
+colnames(boDF)[colnames(boDF) == "n"] <- "Counts"
+
+# white subjects
+# change the n column into count column
+colnames(woDF)[colnames(woDF) == "n"] <- "Counts"
+```
+
+Next, for subject injury, the same steps are taken but with the column names changed to "SubjectInjury"
+
+```{r set up injury}
+# prep the data frame
+InjuryDF <- Force %>%
+    select(SubjectInjury, Race) %>%
+    arrange(Race) %>%
+    group_by(Race, SubjectInjury) %>%
+    summarize(Counts = n()) %>%
+    pivot_wider(names_from = SubjectInjury, values_from = Counts)
+
+# Specify races
+InjuryDF <- InjuryDF %>%
+    filter(Race == 'White' | 
+               Race == 'Black' |
+               Race == 'Asian' |
+               Race == 'Native American') %>%
+    arrange(desc(Yes))
+```
+
+## Analysis and Discussion
+
+For the overall race table, the following code is used
+```{r make race table}
+# create table
+finalDF %>%
+    ungroup(Race) %>%
+    gt() %>%
+    cols_label(
+        Race = "Race"
+    ) %>%
+    tab_header(
+        title = "Reasons for Police Response by Race"
+    ) %>%
+    tab_spanner(
+        label = "Problems",
+        columns = vars('Suspicious Person/Vehicle', 'Assault', 'Domestic Abuse', 'Disturbance', 'Traffic Violations')
+    ) %>%
+    fmt_number(
+        columns = vars('Suspicious Person/Vehicle', 'Assault', 'Domestic Abuse', 'Disturbance', 'Traffic Violations'),
+        sep = ',',
+        decimals = 0
+    )
+```
+
+I first ungroup Race so that I could specify that I want Race to be a column name that's visible in the table. Next, with the tab_header function, I set the title and with the tab_spanner function I create an umbrella label "Problems" with the various 5 problems underneath. Finally, the fmt_number function allows the numbers to have the correct comma formatting.
+
+From the table it's clear that black subjects easily outpace any other race when comparing the cases force was used upon subjects. With the "Suspicious Person/Vehicle" as the leading problem, it seems as though the situation escalated in an undisclosed way that led to the use of force.
+
+Then bar graphs are made for just the black and white subjecsts for better visual representation of the data.
+
+```{r making the bar charts}
+# black subjects
+ggplot(boDF, aes(x=Problem, y=Counts)) + 
+    geom_bar(stat = 'identity', fill = 'steelblue') +
+    geom_text(aes(label=Counts), vjust=1.6, color="white", size=3.5) +
+    ggtitle("Black Use of Force Cases") +
+    theme(
+        plot.title = element_text(face = 'bold', size = 18, hjust = .5),
+        axis.title.x = element_text(face = 'bold', size = 14),
+        axis.title.y = element_text(face = 'bold', size = 14))
+
+# white subjects
+ggplot(woDF, aes(x=Problem, y=Counts)) + 
+    geom_bar(stat = 'identity', fill = 'firebrick') +
+    geom_text(aes(label=Counts), vjust=1.6, color="white", size=3.5) +
+    ggtitle("White Use of Force Cases") +
+    theme(
+        plot.title = element_text(face = 'bold', size = 18, hjust = .5),
+        axis.title.x = element_text(face = 'bold', size = 14),
+        axis.title.y = element_text(face = 'bold', size = 14))
+```
+
+The code uses the ggplot function of the ggplot2 package and uses geom_bar to specify that we will be plotting a bar chart. The fill value of each plot gives the color of the bars which is "steelblue" for the black subjects and "firebrick" for the white subjects. The geom_text shows the actual counts at the top of the bars for greater clarity and ggtitle places the title at the top of the plot. The theme function is used to bold, set the size of, and center justify the title and to bold and set the size of the axis labels. 
+
+The bar plots make it clear just how much more times force was used upon black subjects than white subjects. In addition, the leading problem's prevalence is made extra clear though the visual height when compared to the other problems.
+
+For the subject injury table, similar code to that of the problems table was used.
+```{r injury table}
+# create table
+InjuryDF %>%
+    ungroup(Race) %>%
+    gt() %>%
+    cols_label(
+        Race = "Race"
+    ) %>%
+    tab_header(
+        title = "Subject Injury by Race"
+    ) %>%
+    tab_spanner(
+        label = "Was the Subject Injured from Police Force?",
+        columns = vars('Yes', 'No')
+    ) %>%
+    fmt_number(
+        columns = vars('Yes', 'No'),
+        sep = ',',
+        decimals = 0
+    )
+```
+
+The only difference in code is of the content of the labels and the column names which are just "Yes" and "No" for the question: "Was the subject injured from police force?"
+
+Interestingly enough, there doesn't seem to be a discernable trend when comparing the injuries of people of color than white subjects. In fact, more black subjects were proportionally not injured than their white counterparts. 
+
+## Conclusion
+
+To answer the two questions we asked in the beginning, there seems to be a disproportionate amount of black subjects who are subjected to force by the police than any other race, but the reasons for their presence appears common for most races. However, the injury data doesn't suggest that there is a pattern apart from the greater volume of injuries suffered by the black subjects. Proportionally speaking, the the three non-black races had more subjects injured than those who were not. Although, the accuracy and police bias within the data itself can be brought into question as police officers are left to advocate for themselves in the police reports and describe their actions and the injuries of the subjects as they see fit. 
